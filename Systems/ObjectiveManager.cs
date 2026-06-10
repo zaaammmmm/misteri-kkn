@@ -1,107 +1,145 @@
 using UnityEngine;
-using UnityEngine.UI;
+using TMPro;
 using System.Collections;
+using KKN.Game.Data;
+using KKN.Game.Core;
 
-public class ObjectiveManager : MonoBehaviour
+namespace KKN.Game.Systems
 {
-    public static ObjectiveManager Instance;
-
-    [Header("Popup Objective (di luar TAB)")]
-    public Text objectiveText;
-
-    public int currentStep = 0;
-
-    private string currentObjective = "";
-    private Coroutine hideRoutine;
-
-    void Awake()
+    /// <summary>
+    /// Manages objective progression with support for varied objective types.
+    /// </summary>
+    public class ObjectiveManager : MonoBehaviour
     {
-        Instance = this;
-    }
+        public static ObjectiveManager Instance { get; private set; }
 
-    void Start()
-    {
-        SetObjective();
-        ShowTemporary();
-    }
+        [Header("Popup UI")]
+        [SerializeField] private TMP_Text objectiveText;
 
-    // TAB sudah ditangani oleh TabMenuUI
-    // Jadi ObjectiveManager tidak perlu lagi handle TAB
+        [Header("Objectives")]
+        [SerializeField] private ObjectiveData[] objectives;
 
-    public void NextStep()
-    {
-        currentStep++;
-        SetObjective();
-        ShowTemporary();
-    }
+        public int currentStep { get; private set; } = 0;
 
-    void SetObjective()
-    {
-        switch (currentStep)
+        private string currentObjective = "";
+        private Coroutine hideRoutine;
+        private bool isGlitching = false;
+
+        public event System.Action<int> OnObjectiveChanged;
+
+        void Awake()
         {
-            case 0:
-                currentObjective = "Cari jalan keluar kamar...";
-                break;
-
-            case 1:
-                currentObjective = "Temukan IntroKey";
-                break;
-
-            case 2:
-                currentObjective = "Buka pintu kamar";
-                break;
-
-            case 3:
-                currentObjective = "Cari MainKey";
-                break;
-
-            case 4:
-                currentObjective = "Cari ExitKey";
-                break;
-
-            case 5:
-                currentObjective = "Keluar dari kontrakan";
-                break;
-
-            case 6:
-                currentObjective = "Cari GeneratorKey";
-                break;
-
-            case 7:
-                currentObjective = "Nyalakan Generator";
-                break;
-
-            case 8:
-                currentObjective = "Listrik Menyala...";
-                break;
+            if (Instance != null)
+            {
+                Destroy(gameObject);
+                return;
+            }
+            Instance = this;
         }
 
-        if (objectiveText != null)
-            objectiveText.text = currentObjective;
-    }
+        void Start()
+        {
+            SetObjective();
+            ShowTemporary();
+        }
 
-    void ShowTemporary()
-    {
-        if (objectiveText == null) return;
+        public void NextStep()
+        {
+            currentStep++;
+            SetObjective();
+            ShowTemporary();
+            OnObjectiveChanged?.Invoke(currentStep);
+        }
 
-        objectiveText.gameObject.SetActive(true);
+        void SetObjective()
+        {
+            if (objectives != null && currentStep < objectives.Length)
+            {
+                currentObjective = objectives[currentStep].description;
+            }
+            else
+            {
+                currentObjective = GetLegacyObjective();
+            }
 
-        if (hideRoutine != null)
-            StopCoroutine(hideRoutine);
+            if (objectiveText != null)
+                objectiveText.text = currentObjective;
+        }
 
-        hideRoutine = StartCoroutine(HideAfterSeconds());
-    }
+        string GetLegacyObjective()
+        {
+            return currentStep switch
+            {
+                0 => "Cari jalan keluar kamar...",
+                1 => "Temukan IntroKey",
+                2 => "Buka pintu kamar",
+                3 => "Cari MainKey",
+                4 => "Cari ExitKey",
+                5 => "Keluar dari kontrakan",
+                6 => "Cari GeneratorKey",
+                7 => "Nyalakan Generator",
+                8 => "Listrik Menyala...",
+                _ => ""
+            };
+        }
 
-    IEnumerator HideAfterSeconds()
-    {
-        yield return new WaitForSeconds(3f);
+        public void GlitchObjectiveText()
+        {
+            if (isGlitching || objectiveText == null) return;
+            StartCoroutine(GlitchRoutine());
+        }
 
-        if (objectiveText != null)
-            objectiveText.gameObject.SetActive(false);
-    }
+        IEnumerator GlitchRoutine()
+        {
+            isGlitching = true;
+            string original = objectiveText.text;
+            string chars = "!@#$%^&*()_+-=[]{}|;':,./<>?~`";
 
-    public string GetCurrentObjective()
-    {
-        return currentObjective;
+            for (int i = 0; i < 8; i++)
+            {
+                string glitched = "";
+                for (int j = 0; j < original.Length; j++)
+                {
+                    glitched += Random.value < 0.3f ? chars[Random.Range(0, chars.Length)] : original[j];
+                }
+                objectiveText.text = glitched;
+                yield return new WaitForSeconds(Random.Range(0.05f, 0.15f));
+            }
+
+            objectiveText.text = original;
+            isGlitching = false;
+        }
+
+        void ShowTemporary()
+        {
+            if (objectiveText == null) return;
+
+            objectiveText.gameObject.SetActive(true);
+
+            if (hideRoutine != null)
+                StopCoroutine(hideRoutine);
+
+            hideRoutine = StartCoroutine(HideAfterSeconds());
+        }
+
+        IEnumerator HideAfterSeconds()
+        {
+            yield return new WaitForSeconds(GameConstants.OBJECTIVE_SHOW_TIME);
+
+            float t = 0f;
+            while (t < 1f)
+            {
+                t += Time.deltaTime * GameConstants.UI_FADE_SPEED;
+                if (objectiveText != null)
+                    objectiveText.alpha = Mathf.Lerp(1f, 0f, t);
+                yield return null;
+            }
+
+            if (objectiveText != null)
+                objectiveText.gameObject.SetActive(false);
+        }
+
+        public string GetCurrentObjective() => currentObjective;
     }
 }
+

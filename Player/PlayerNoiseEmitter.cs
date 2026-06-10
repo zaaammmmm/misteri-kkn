@@ -1,41 +1,100 @@
 using UnityEngine;
+using KKN.Game.Core;
+using KKN.Game.Enemy;
 
-public class PlayerNoiseEmitter : MonoBehaviour
+namespace KKN.Game.Player
 {
-    public float walkNoise = 4f;
-    public float runNoise = 9f;
-    public float crouchNoise = 1.5f;
-
-    float timer = 0f;
-
-    void Update()
+    /// <summary>
+    /// Emits noise that ghosts can hear based on player movement state.
+    /// Only emits when player is actually moving.
+    /// </summary>
+    public class PlayerNoiseEmitter : MonoBehaviour
     {
-        timer -= Time.deltaTime;
+        [Header("Noise Radius")]
+        [SerializeField] private float walkNoise = 4f;
+        [SerializeField] private float runNoise = 9f;
+        [SerializeField] private float crouchNoise = 1.5f;
 
-        if (timer > 0) return;
+        [Header("Emit Interval")]
+        [SerializeField] private float walkInterval = 0.6f;
+        [SerializeField] private float runInterval = 0.4f;
+        [SerializeField] private float crouchInterval = 0.9f;
 
-        if (PlayerState.Instance.isRunning)
+        [Header("Settings")]
+        [SerializeField] private float moveThreshold = 0.15f;
+
+        private float timer;
+        private CharacterController cc;
+        private GhostAI[] cachedGhosts;
+
+        /// <summary>
+        /// Noise level saat ini dalam rentang 0–1, untuk dibaca PlayerHUD.
+        /// 0 = diam, 0.3 = jalan, 0.7 = jongkok bergerak, 1.0 = berlari.
+        /// </summary>
+        public float CurrentNoiseLevel { get; private set; }
+
+        void Start()
         {
-            Emit(runNoise);
-            timer = 0.4f;
+            cc = GetComponent<CharacterController>();
+            cachedGhosts = FindObjectsByType<GhostAI>(FindObjectsSortMode.None);
         }
-        else if (PlayerState.Instance.isCrouching)
-        {
-            Emit(crouchNoise);
-            timer = 0.8f;
-        }
-        else
-        {
-            Emit(walkNoise);
-            timer = 0.6f;
-        }
-    }
 
-    void Emit(float radius)
-    {
-        GhostAI[] ghosts = FindObjectsOfType<GhostAI>();
+        void Update()
+        {
+            timer -= Time.deltaTime;
+            if (timer > 0) return;
 
-        foreach(var g in ghosts)
-            g.HearSound(transform.position);
+            float speed = cc != null
+                ? new Vector3(cc.velocity.x, 0, cc.velocity.z).magnitude
+                : 0f;
+
+            bool isMoving = speed > moveThreshold;
+
+            if (!isMoving)
+            {
+                CurrentNoiseLevel = 0f;
+                timer = walkInterval;
+                return;
+            }
+
+            if (PlayerState.Instance != null && PlayerState.Instance.IsRunning)
+            {
+                CurrentNoiseLevel = 1.0f;
+                Emit(runNoise);
+                timer = runInterval;
+            }
+            else if (PlayerState.Instance != null && PlayerState.Instance.IsCrouching)
+            {
+                CurrentNoiseLevel = 0.3f;
+                Emit(crouchNoise);
+                timer = crouchInterval;
+            }
+            else
+            {
+                CurrentNoiseLevel = 0.6f;
+                Emit(walkNoise);
+                timer = walkInterval;
+            }
+        }
+
+        void Emit(float radius)
+        {
+            if (cachedGhosts == null) return;
+
+            foreach (var g in cachedGhosts)
+            {
+                if (g == null) continue;
+
+                float dist = Vector3.Distance(transform.position, g.transform.position);
+                if (dist <= radius)
+                    g.HearSound(transform.position, radius);
+            }
+        }
+
+        public void RefreshGhostCache()
+        {
+            cachedGhosts = FindObjectsByType<GhostAI>(FindObjectsSortMode.None);
+        }
     }
 }
+

@@ -1,46 +1,100 @@
 using UnityEngine;
-using UnityEngine.UI;
+using TMPro;
+using KKN.Game.Core;
 
-public class PlayerInteraction : MonoBehaviour
+namespace KKN.Game.Player
 {
-    public float interactDistance = 3f;
-    public LayerMask interactLayer;
-    public Text hintText;
-
-    Camera cam;
-
-    void Start()
+    /// <summary>
+    /// Handles raycast-based interaction with IInteractable objects.
+    /// </summary>
+    public class PlayerInteraction : MonoBehaviour
     {
-        cam = Camera.main;
-    }
+        [Header("Settings")]
+        [SerializeField] private float interactDistance = 3f;
+        [SerializeField] private LayerMask interactLayer;
 
-    void Update()
-    {
-        CheckInteract();
-    }
+        [Header("UI Reference")]
+        [SerializeField] private TMP_Text hintText;
 
-    void CheckInteract()
-    {
-        Ray ray = new Ray(cam.transform.position, cam.transform.forward);
-        RaycastHit hit;
+        private Camera cam;
+        private IInteractable currentTarget;
 
-        if (Physics.Raycast(ray, out hit, interactDistance, interactLayer))
+        void Start()
         {
-            IInteractable interactable = hit.collider.GetComponent<IInteractable>();
-
-            if (interactable != null)
-            {
-                hintText.text = interactable.GetInteractText();
-
-                if (Input.GetKeyDown(KeyCode.E))
-                {
-                    interactable.Interact();
-                }
-
-                return;
-            }
+            cam = Camera.main;
         }
 
-        hintText.text = "";
+        void Update()
+        {
+            if (PlayerState.Instance != null && PlayerState.Instance.IsFrozen)
+            {
+                ClearHint();
+                return;
+            }
+
+            if (GameManager.Instance != null && !GameManager.Instance.IsPlaying)
+            {
+                ClearHint();
+                return;
+            }
+
+            CheckInteract();
+        }
+
+        void CheckInteract()
+        {
+            if (cam == null) { cam = Camera.main; return; }
+
+            Ray ray = new Ray(cam.transform.position, cam.transform.forward);
+
+            if (Physics.Raycast(ray, out RaycastHit hit, interactDistance, interactLayer))
+            {
+                IInteractable interactable = hit.collider.GetComponent<IInteractable>();
+
+                if (interactable != null)
+                {
+                    if (currentTarget != interactable)
+                    {
+                        currentTarget?.OnHoverExit();
+                        currentTarget = interactable;
+                        currentTarget?.OnHoverEnter();
+                    }
+
+                    SetHint(interactable.GetInteractText());
+
+                    if (InputManager.Instance != null && InputManager.Instance.GetInteractDown())
+                        interactable.Interact();
+                    else if (Input.GetKeyDown(GameConstants.KEY_INTERACT))
+                        interactable.Interact();
+
+                    return;
+                }
+            }
+
+            if (currentTarget != null)
+            {
+                currentTarget.OnHoverExit();
+                currentTarget = null;
+            }
+
+            ClearHint();
+        }
+
+        void SetHint(string text)
+        {
+            if (hintText != null)
+                hintText.text = text;
+            else if (UI.PlayerHUD.Instance != null)
+                UI.PlayerHUD.Instance.ShowPrompt(text);
+        }
+
+        void ClearHint()
+        {
+            if (hintText != null)
+                hintText.text = string.Empty;
+            else if (UI.PlayerHUD.Instance != null)
+                UI.PlayerHUD.Instance.HidePrompt();
+        }
     }
 }
+

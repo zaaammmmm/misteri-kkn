@@ -1,81 +1,94 @@
 using UnityEngine;
+using KKN.Game.Systems;
+using KKN.Game.Core;
 
-public class LockedDoor : MonoBehaviour, IInteractable
+namespace KKN.Game.Puzzle
 {
-    [Header("Key Requirement")]
-    public string requiredKey = "MainKey";
-
-    [Header("Door Settings")]
-    public bool opened = false;
-    public float openAngle = 90f;
-    public float openSpeed = 2f;
-
-    [Header("Auto Progress")]
-    public bool completeObjectiveWhenOpened = true;
-
-    private Quaternion startRotation;
-    private Quaternion targetRotation;
-    private bool isOpening = false;
-
-    void Start()
+    /// <summary>
+    /// Door that requires a key to open. Supports animation and objective progression.
+    /// </summary>
+    public class LockedDoor : MonoBehaviour, IInteractable
     {
-        startRotation = transform.rotation;
-        targetRotation = Quaternion.Euler(
-            transform.eulerAngles.x,
-            transform.eulerAngles.y + openAngle,
-            transform.eulerAngles.z
-        );
-    }
+        [Header("Key Requirement")]
+        [SerializeField] private string requiredKey = GameConstants.ITEM_MAIN_KEY;
 
-    void Update()
-    {
-        if (isOpening)
+        [Header("Door Settings")]
+        [SerializeField] private bool opened = false;
+        [SerializeField] private float openAngle = 90f;
+        [SerializeField] private float openSpeed = 2f;
+
+        [Header("Auto Progress")]
+        [SerializeField] private bool completeObjectiveWhenOpened = true;
+
+        [Header("Audio")]
+        [SerializeField] private AudioSource audioSource;
+        [SerializeField] private AudioClip unlockClip;
+        [SerializeField] private AudioClip lockedClip;
+
+        private Quaternion startRotation;
+        private Quaternion targetRotation;
+        private bool isOpening = false;
+
+        void Start()
         {
-            transform.rotation = Quaternion.Slerp(
-                transform.rotation,
-                targetRotation,
-                openSpeed * Time.deltaTime
+            startRotation = transform.rotation;
+            targetRotation = Quaternion.Euler(
+                transform.eulerAngles.x,
+                transform.eulerAngles.y + openAngle,
+                transform.eulerAngles.z
             );
+        }
 
-            if (Quaternion.Angle(transform.rotation, targetRotation) < 0.5f)
+        void Update()
+        {
+            if (isOpening)
             {
-                transform.rotation = targetRotation;
-                isOpening = false;
+                transform.rotation = Quaternion.Slerp(
+                    transform.rotation,
+                    targetRotation,
+                    openSpeed * Time.deltaTime
+                );
+
+                if (Quaternion.Angle(transform.rotation, targetRotation) < 0.5f)
+                {
+                    transform.rotation = targetRotation;
+                    isOpening = false;
+                }
             }
         }
-    }
 
-    public void Interact()
-    {
-        if (opened || isOpening) return;
-
-        if (InventorySystem.Instance.HasItem(requiredKey))
+        public void Interact()
         {
-            opened = true;
-            isOpening = true;
+            if (opened || isOpening) return;
 
-            Debug.Log("Pintu terbuka");
-
-            if (completeObjectiveWhenOpened &&
-                ObjectiveManager.Instance != null)
+            if (InventorySystem.Instance != null && InventorySystem.Instance.HasItem(requiredKey))
             {
-                ObjectiveManager.Instance.NextStep();
+                opened = true;
+                isOpening = true;
+
+                if (unlockClip != null && audioSource != null)
+                    audioSource.PlayOneShot(unlockClip);
+
+                if (completeObjectiveWhenOpened)
+                    ObjectiveManager.Instance?.NextStep();
+            }
+            else
+            {
+                if (lockedClip != null && audioSource != null)
+                    audioSource.PlayOneShot(lockedClip);
             }
         }
-        else
+
+        public string GetInteractText()
         {
-            Debug.Log("Pintu Terkunci. Butuh key: " + requiredKey);
+            if (opened) return "";
+            if (InventorySystem.Instance != null && InventorySystem.Instance.HasItem(requiredKey))
+                return "[E] Buka Pintu";
+            return "[E] Pintu Terkunci";
         }
-    }
 
-    public string GetInteractText()
-    {
-        if (opened)
-            return "";
-
-        if (InventorySystem.Instance.HasItem(requiredKey))
-            return "[E] Buka Pintu";
-
-        return "[E] Pintu Terkunci";
+        public void OnHoverEnter() { }
+        public void OnHoverExit() { }
     }
 }
+

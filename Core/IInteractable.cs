@@ -1,5 +1,14 @@
-public interface IInteractable
+namespace KKN.Game.Core
 {
-    void Interact();
-    string GetInteractText();
+    /// <summary>
+    /// Interface for objects the player can interact with via raycast.
+    /// </summary>
+    public interface IInteractable
+    {
+        void Interact();
+        string GetInteractText();
+        void OnHoverEnter();
+        void OnHoverExit();
+    }
 }
+
