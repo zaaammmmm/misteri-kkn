@@ -6,7 +6,7 @@ namespace KKN.Game.Systems
     /// <summary>
     /// JSON-based save/load system for game progress.
     /// </summary>
-    public class SaveSystem : MonoBehaviour
+    public partial class SaveSystem : MonoBehaviour
     {
         public static SaveSystem Instance { get; private set; }
 

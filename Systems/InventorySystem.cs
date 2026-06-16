@@ -1,139 +1,167 @@
 using UnityEngine;
 using System.Collections.Generic;
+using System;
 using KKN.Game.Data;
 using KKN.Game.Inventory;
 
 namespace KKN.Game.Systems
 {
+    /// <summary>
+    /// Central inventory — menyimpan item (key/material/other) dan dokumen.
+    /// Semua perubahan memancarkan event agar UI bisa reaktif.
+    /// </summary>
     public class InventorySystem : MonoBehaviour
     {
         public static InventorySystem Instance { get; private set; }
 
-        // Quick Items
-        private Dictionary<ItemData, int> items = new Dictionary<ItemData, int>();
-        private HashSet<string> legacyItems = new HashSet<string>();
+        // ── Data registry ─────────────────────────────────
+        [Header("Item Registry")]
+        [Tooltip("Daftarkan semua ItemData ScriptableObject di sini")]
+        [SerializeField] private List<ItemData> itemRegistry = new();
 
-        // Documents
-        private List<DocumentData> documents = new List<DocumentData>();
+        // ── Runtime storage ───────────────────────────────
+        // key: itemID, value: jumlah
+        private Dictionary<string, int>      items     = new();
+        private List<DocumentData>            documents = new();
 
-        public event System.Action<ItemData> OnItemAdded;
-        public event System.Action<ItemData> OnItemRemoved;
-        public event System.Action OnInventoryChanged;
-        public event System.Action OnDocumentChanged;
+        // ── Events (UI subscribe ke sini) ─────────────────
+        public event Action<string, int>      OnItemChanged;   // itemID, newCount
+        public event Action<DocumentData>     OnDocumentAdded;
+        public event Action                   OnInventoryChanged; // general refresh
 
+        // ── Lifecycle ─────────────────────────────────────
         void Awake()
         {
-            if (Instance != null)
-            {
-                Destroy(gameObject);
-                return;
-            }
-
+            if (Instance != null) { Destroy(gameObject); return; }
             Instance = this;
             DontDestroyOnLoad(gameObject);
         }
 
-        // =====================
-        // QUICK ITEM
-        // =====================
-
-        public void AddItem(ItemData item)
+        // ══════════════════════════════════════════════════
+        //  ITEMS
+        // ══════════════════════════════════════════════════
+        public event Action<ItemData, int> OnMaterialAdded;
+        public void AddItem(string itemID, int amount = 1)
         {
-            if (item == null) return;
+            Debug.Log($"ADD ITEM CALLED : {itemID}");
 
-            if (!items.ContainsKey(item))
-                items[item] = 0;
+            if (string.IsNullOrEmpty(itemID))
+                return;
 
-            items[item]++;
+            if (items.ContainsKey(itemID))
+                items[itemID] += amount;
+            else
+                items[itemID] = amount;
 
-            OnItemAdded?.Invoke(item);
-            OnInventoryChanged?.Invoke();
-        }
+            OnItemChanged?.Invoke(itemID, items[itemID]);
 
-        public void AddItem(string itemID)
-        {
-            legacyItems.Add(itemID);
-            OnInventoryChanged?.Invoke();
-        }
+            var data = GetItemData(itemID);
 
-        public bool HasItem(string itemID)
-        {
-            return legacyItems.Contains(itemID);
-        }
+            Debug.Log($"DATA = {(data != null ? data.displayName : "NULL")}");
 
-        public bool HasItem(ItemData item)
-        {
-            return items.ContainsKey(item);
-        }
+            if (data != null)
+            {
+                Debug.Log($"TYPE = {data.itemType}");
 
-        public bool ConsumeItem(ItemData item)
-        {
-            if (!HasItem(item)) return false;
+                if (string.Equals(
+                    data.itemType,
+                    "Material",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    Debug.Log("MATERIAL EVENT FIRED");
 
-            items[item]--;
+                    OnMaterialAdded?.Invoke(
+                        data,
+                        items[itemID]);
+                }
+            }
 
-            if (items[item] <= 0)
-                items.Remove(item);
-
-            OnItemRemoved?.Invoke(item);
             OnInventoryChanged?.Invoke();
 
+            Debug.Log(
+                $"[InventorySystem] +{amount} '{itemID}' → total {items[itemID]}");
+        }
+
+        public bool HasItem(string itemID, int amount = 1)
+        {
+            return items.TryGetValue(itemID, out int count) && count >= amount;
+        }
+
+        public bool RemoveItem(string itemID, int amount = 1)
+        {
+            if (!HasItem(itemID, amount)) return false;
+
+            items[itemID] -= amount;
+            if (items[itemID] <= 0) items.Remove(itemID);
+
+            OnItemChanged?.Invoke(itemID, items.ContainsKey(itemID) ? items[itemID] : 0);
+            OnInventoryChanged?.Invoke();
             return true;
         }
 
-        // =====================
-        // DOCUMENT
-        // =====================
+        public int GetItemCount(string itemID) =>
+            items.TryGetValue(itemID, out int c) ? c : 0;
+
+        public Dictionary<string, int> GetAllItems() => new(items);
+
+        // ── ItemData lookup ───────────────────────────────
+        public ItemData GetItemData(string itemID)
+        {
+            return itemRegistry.Find(d => d != null && d.itemID == itemID);
+        }
+
+        // ══════════════════════════════════════════════════
+        //  DOCUMENTS
+        // ══════════════════════════════════════════════════
 
         public void AddDocument(DocumentData doc)
         {
             if (doc == null) return;
+            if (documents.Contains(doc)) return;
 
-            if (!documents.Contains(doc))
-            {
-                documents.Add(doc);
-                OnDocumentChanged?.Invoke();
-            }
-        }
+            doc.isPicked = true;
+            documents.Add(doc);
 
-        public bool HasDocument(DocumentData doc)
-        {
-            return documents.Contains(doc);
-        }
-
-        public List<DocumentData> GetDocuments()
-        {
-            return documents;
-        }
-
-        /// <summary>Mengembalikan semua ItemData yang ada di inventory beserta jumlahnya.</summary>
-        public List<ItemData> GetItems()
-        {
-            return new List<ItemData>(items.Keys);
-        }
-
-        /// <summary>Mengembalikan jumlah stack item tertentu (0 jika tidak ada).</summary>
-        public int GetItemCount(ItemData item)
-        {
-            return items.TryGetValue(item, out int count) ? count : 0;
-        }
-
-        /// <summary>Alias ConsumeItem — dipakai TabInventoryUI tombol GUNAKAN.</summary>
-        public bool UseItem(ItemData item) => ConsumeItem(item);
-
-        /// <summary>Alias ConsumeItem — dipakai TabInventoryUI tombol BUANG.</summary>
-        public bool RemoveItem(ItemData item) => ConsumeItem(item);
-
-        // =====================
-
-        public void ClearInventory()
-        {
-            items.Clear();
-            legacyItems.Clear();
-            documents.Clear();
-
+            OnDocumentAdded?.Invoke(doc);
             OnInventoryChanged?.Invoke();
-            OnDocumentChanged?.Invoke();
+
+            Debug.Log($"[InventorySystem] Dokumen ditambahkan: '{doc.title}'");
+        }
+
+        public bool HasDocument(string documentID) =>
+            documents.Exists(d => d.documentID == documentID);
+
+        public List<DocumentData> GetAllDocuments() => new(documents);
+
+        // ══════════════════════════════════════════════════
+        //  UTILITY
+        // ══════════════════════════════════════════════════
+
+        /// <summary>Ambil semua item dengan itemType tertentu (Key/Material/Other).</summary>
+        public List<(ItemData data, int count)> GetItemsByType(string itemType)
+        {
+            Debug.Log($"ITEM DICTIONARY COUNT = {items.Count}");
+
+            var result = new List<(ItemData, int)>();
+            foreach (var kv in items)
+            {
+                Debug.Log($"ITEM = {kv.Key} | COUNT = {kv.Value}");
+
+                var data = GetItemData(kv.Key);
+
+                Debug.Log(
+                    $"ID={kv.Key} " +
+                    $"DATA={(data != null ? data.displayName : "NULL")} " +
+                    $"TYPE={(data != null ? data.itemType : "NULL")}"
+                );
+
+                if (data != null && string.Equals(data.itemType, itemType,
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    result.Add((data, kv.Value));
+                }
+            }
+            return result;
         }
     }
 }

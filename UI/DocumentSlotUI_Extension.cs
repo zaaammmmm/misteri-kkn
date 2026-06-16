@@ -1,23 +1,6 @@
-// ================================================================
-//  DocumentSlotUI_Extension.cs
-//  Extension partial untuk DocumentSlotUI.cs — tambahkan method
-//  SetupGeneric() agar slot bisa dipakai untuk ItemData (kunci, bensin, dll)
-//  tanpa mengubah script DocumentSlotUI asli.
-//
-//  Taruh di:  Assets/Scripts/UI/DocumentSlotUI_Extension.cs
-//
-//  SYARAT: DocumentSlotUI.cs harus menggunakan keyword partial class.
-//  Tambahkan keyword partial di deklarasinya:
-//    public partial class DocumentSlotUI : ...
-//
-//  Jika tidak ingin mengubah DocumentSlotUI.cs asli, merge isi method
-//  SetupGeneric() langsung ke dalam DocumentSlotUI.cs.
-// ================================================================
-
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-
 
 namespace KKN.Game.UI
 {

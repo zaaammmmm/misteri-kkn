@@ -1,37 +1,49 @@
 using UnityEngine;
 using KKN.Game.Systems;
 using KKN.Game.Core;
+using KKN.Game.Data;
 
 namespace KKN.Game.Puzzle
 {
     /// <summary>
-    /// Door that requires a key to open. Supports animation and objective progression.
+    /// Pintu terkunci yang membutuhkan key tertentu.
+    /// Sekarang mendukung objective text (before/after) via Inspector.
     /// </summary>
     public class LockedDoor : MonoBehaviour, IInteractable
     {
         [Header("Key Requirement")]
-        [SerializeField] private string requiredKey = GameConstants.ITEM_MAIN_KEY;
+        [SerializeField] private ItemData requiredKeyItem;
 
         [Header("Door Settings")]
-        [SerializeField] private bool opened = false;
+        [SerializeField] private bool  opened    = false;
         [SerializeField] private float openAngle = 90f;
         [SerializeField] private float openSpeed = 2f;
+
+        [Header("Objective Text")]
+        [Tooltip("Muncul saat player hover TAPI belum punya kunci")]
+        [TextArea(2, 3)]
+        [SerializeField] private string objectiveTextLocked = "Temukan kunci untuk membuka pintu ini.";
+
+        [Tooltip("Muncul setelah pintu berhasil dibuka")]
+        [TextArea(2, 3)]
+        [SerializeField] private string objectiveTextOpened = "";
 
         [Header("Auto Progress")]
         [SerializeField] private bool completeObjectiveWhenOpened = true;
 
         [Header("Audio")]
-        [SerializeField] private AudioSource audioSource;
-        [SerializeField] private AudioClip unlockClip;
-        [SerializeField] private AudioClip lockedClip;
+        [Tooltip("SFX 3D di posisi pintu saat berhasil dibuka")]
+        [SerializeField] private AudioClip   unlockClip;
+        [Tooltip("SFX 3D di posisi pintu saat dicoba tanpa kunci")]
+        [SerializeField] private AudioClip   lockedClip;
 
         private Quaternion startRotation;
         private Quaternion targetRotation;
-        private bool isOpening = false;
+        private bool       isOpening = false;
 
         void Start()
         {
-            startRotation = transform.rotation;
+            startRotation  = transform.rotation;
             targetRotation = Quaternion.Euler(
                 transform.eulerAngles.x,
                 transform.eulerAngles.y + openAngle,
@@ -41,54 +53,88 @@ namespace KKN.Game.Puzzle
 
         void Update()
         {
-            if (isOpening)
-            {
-                transform.rotation = Quaternion.Slerp(
-                    transform.rotation,
-                    targetRotation,
-                    openSpeed * Time.deltaTime
-                );
+            if (!isOpening) return;
 
-                if (Quaternion.Angle(transform.rotation, targetRotation) < 0.5f)
-                {
-                    transform.rotation = targetRotation;
-                    isOpening = false;
-                }
+            transform.rotation = Quaternion.Slerp(
+                transform.rotation,
+                targetRotation,
+                openSpeed * Time.deltaTime
+            );
+
+            if (Quaternion.Angle(transform.rotation, targetRotation) < 0.5f)
+            {
+                transform.rotation = targetRotation;
+                isOpening = false;
             }
+        }
+
+        private bool HasRequiredKey()
+        {
+            if (requiredKeyItem == null)
+                return false;
+
+            return InventorySystem.Instance != null &&
+                InventorySystem.Instance.HasItem(requiredKeyItem.itemID);
         }
 
         public void Interact()
         {
             if (opened || isOpening) return;
 
-            if (InventorySystem.Instance != null && InventorySystem.Instance.HasItem(requiredKey))
+            if (requiredKeyItem == null)
             {
-                opened = true;
+                Debug.LogWarning(
+                    $"[LockedDoor] Required Key Item NULL pada {gameObject.name}");
+                return;
+            }
+
+            bool hasKey = HasRequiredKey();
+
+            if (hasKey)
+            {
+                opened    = true;
                 isOpening = true;
 
-                if (unlockClip != null && audioSource != null)
-                    audioSource.PlayOneShot(unlockClip);
+                AudioManager.Instance?.PlaySFX(unlockClip, transform.position, 1f);
+
+                if (!string.IsNullOrEmpty(objectiveTextOpened))
+                    ObjectiveManager.Instance?.SetObjective(objectiveTextOpened);
 
                 if (completeObjectiveWhenOpened)
                     ObjectiveManager.Instance?.NextStep();
             }
             else
             {
-                if (lockedClip != null && audioSource != null)
-                    audioSource.PlayOneShot(lockedClip);
+                AudioManager.Instance?.PlaySFX(lockedClip, transform.position, 0.8f);
+
+                if (!string.IsNullOrEmpty(objectiveTextLocked))
+                    ObjectiveManager.Instance?.SetObjective(objectiveTextLocked);
             }
         }
 
         public string GetInteractText()
         {
-            if (opened) return "";
-            if (InventorySystem.Instance != null && InventorySystem.Instance.HasItem(requiredKey))
+            bool hasKey = HasRequiredKey();
+
+            if (hasKey)
                 return "[E] Buka Pintu";
+
+            if (requiredKeyItem != null)
+                return $"[E] Membutuhkan {requiredKeyItem.displayName}";
+
             return "[E] Pintu Terkunci";
         }
 
-        public void OnHoverEnter() { }
+        public void OnHoverEnter()
+        {
+            if (!opened && !string.IsNullOrEmpty(objectiveTextLocked))
+            {
+                bool hasKey = HasRequiredKey();
+                if (!hasKey)
+                    ObjectiveManager.Instance?.SetObjective(objectiveTextLocked);
+            }
+        }
+
         public void OnHoverExit() { }
     }
 }
-

@@ -1,296 +1,178 @@
 using UnityEngine;
 using UnityEngine.UI;
-using UnityEngine.EventSystems;
 using TMPro;
-using System.Collections;
+using KKN.Game.Inventory;
 
 namespace KKN.Game.UI
 {
     /// <summary>
-    /// Viewer zoom untuk dokumen. Mendukung:
-    /// - Scroll mouse untuk zoom in/out
-    /// - Klik & drag untuk pan
-    /// - Tombol close / klik luar untuk tutup
-    /// - Animasi fade in/out
+    /// Menampilkan dokumen full-screen dengan zoom dan pan menggunakan mouse.
+    /// Dipanggil dari TabInventoryUI saat player klik "Baca".
     ///
-    /// SETUP HIERARCHY (Tambahkan sebagai child dari Canvas):
-    /// 
-    /// [GameObject] "DocumentZoomViewer"   ← script ini
-    ///   ├─ [Image] "Overlay"              ← background gelap semi-transparan, raycast on
-    ///   ├─ [GameObject] "ViewerContainer" ← RectTransform, child dari overlay
-    ///   │    └─ [Image] "DocumentImage"   ← gambar dokumen, dengan component ini
-    ///   └─ [Button] "CloseButton"         ← tombol X (optional)
-    ///        └─ [TMP_Text] "X"
-    ///
-    /// Pastikan DocumentZoomViewer punya CanvasGroup untuk animasi fade.
+    /// Hierarchy:
+    ///   DocumentZoomCanvas
+    ///     ├─ Overlay (Image, hitam transparan)
+    ///     ├─ DocumentPanel
+    ///     │    ├─ DocumentTitle   (TMP_Text)
+    ///     │    ├─ DocumentContent (TMP_Text — teks dokumen)
+    ///     │    ├─ DocumentImage   (Image — fullImage jika ada)
+    ///     │    └─ CloseButton     (Button)
+    ///     └─ ZoomHint             (TMP_Text — "Scroll: zoom | Drag: geser")
     /// </summary>
-public class DocumentZoomViewer : MonoBehaviour,
-        IPointerDownHandler, IPointerUpHandler, IPointerClickHandler
+    public class DocumentZoomViewer : MonoBehaviour
     {
-        [Header("Referensi UI")]
+        public static DocumentZoomViewer Instance { get; private set; }
+
+        [Header("Panels")]
+        [SerializeField] private GameObject  viewerRoot;
         [SerializeField] private CanvasGroup canvasGroup;
-        [SerializeField] private Image overlay;
-        [SerializeField] private RectTransform documentImageRect;
-        [SerializeField] private Image documentImage;
-        [SerializeField] private Button closeButton;
 
-        [Header("Zoom Settings")]
-        [SerializeField] private float minZoom = 0.5f;
-        [SerializeField] private float maxZoom = 4f;
-        [SerializeField] private float zoomStep = 0.15f;
-        [SerializeField] private float zoomSmoothSpeed = 10f;
+        [Header("Document Elements")]
+        [SerializeField] private TMP_Text  titleText;
+        [SerializeField] private TMP_Text  contentText;
+        [SerializeField] private Image     documentImage;
 
-[Header("Animasi")]
-        [SerializeField] private float fadeSpeed = 5f;
+        [Header("Close")]
+        [SerializeField] private Button    closeButton;
 
-        // Step 5: Local sound effects
-        [Header("Local Audio")]
-        [SerializeField] private AudioSource localClickSound;
-        [SerializeField] private AudioSource localZoomSound;
+        [Header("Zoom & Pan Settings")]
+        [SerializeField] private RectTransform documentPanel;   // panel yang di-zoom
+        [SerializeField] private float          zoomMin      = 0.8f;
+        [SerializeField] private float          zoomMax      = 3f;
+        [SerializeField] private float          zoomSpeed    = 0.1f;
+        [SerializeField] private float          animSpeed    = 10f;
 
-        // State
-        private float currentZoom = 1f;
-        private float targetZoom = 1f;
-        private Vector2 lastPointerPosition;
-        private bool isDragging = false;
-        private bool isVisible = false;
-        private Vector2 imageOriginPos;
+        // ── Runtime ───────────────────────────────────────
+        private bool    isOpen    = false;
+        private float   zoomTarget = 1f;
+        private Vector2 panOffset  = Vector2.zero;
+        private Vector2 panTarget  = Vector2.zero;
 
+        // Pan drag
+        private bool    isDragging    = false;
+        private Vector2 lastMousePos;
+
+        // ── Lifecycle ─────────────────────────────────────
         void Awake()
         {
-            gameObject.SetActive(false);
+            if (Instance != null) { Destroy(gameObject); return; }
+            Instance = this;
 
-            if (canvasGroup == null)
-                canvasGroup = GetComponent<CanvasGroup>();
+            closeButton?.onClick.AddListener(Close);
 
-            if (closeButton != null)
-                closeButton.onClick.AddListener(Hide);
-
-            // // Klik overlay tutup viewer
-            // if (overlay != null)
-            // {
-            //     var overlayBtn = overlay.gameObject.AddComponent<Button>();
-            //     overlayBtn.transition = Selectable.Transition.None;
-            //     overlayBtn.onClick.AddListener(Hide);
-            // }
-        }
-
-        public void OnOverlayClicked()
-        {
-            Hide();
+            if (viewerRoot != null) viewerRoot.SetActive(false);
+            if (canvasGroup != null) canvasGroup.alpha = 0f;
         }
 
         void Update()
         {
-            if (!isVisible) return;
-
-            // Tekan Escape untuk tutup
-            if (Input.GetKeyDown(KeyCode.Escape))
-            {
-                Hide();
-                return;
-            }
+            if (!isOpen) return;
 
             HandleZoom();
-            
-            // Smooth zoom
-            currentZoom = Mathf.Lerp(currentZoom, targetZoom, Time.unscaledDeltaTime * zoomSmoothSpeed);
-            if (documentImageRect != null)
-                documentImageRect.localScale = Vector3.one * currentZoom;
+            HandlePan();
+            ApplyTransform();
 
-            // Clamp posisi agar tidak terlalu jauh dari layar
-            ClampImagePosition();
+            // Tutup dengan ESC (kembali ke inventory, bukan ke game)
+            if (Input.GetKeyDown(Core.GameConstants.KEY_ESCAPE))
+                Close();
         }
 
-// =========================================
-        // PUBLIC API
-        // =========================================
+        // ══════════════════════════════════════════════════
+        //  PUBLIC API
+        // ══════════════════════════════════════════════════
 
-        public void Show(Sprite sprite)
+        public void Open(DocumentData doc)
         {
-
-            // Step 7: Error handling
-            if (sprite == null)
-            {
-                Debug.LogWarning("[DocumentZoomViewer] Sprite is null!");
-                return;
-            }
-
-            if (documentImage == null)
-            {
-                Debug.LogError("[DocumentZoomViewer] documentImage is null! Assign in Inspector.");
-                return;
-            }
-
-            gameObject.SetActive(true);
-            isVisible = true;
-
-            documentImage.sprite = sprite;
+            if (doc == null) return;
 
             // Reset transform
-            currentZoom = 1f;
-            targetZoom = 1f;
-            documentImageRect.localScale = Vector3.one;
-            documentImageRect.anchoredPosition = Vector2.zero;
-            imageOriginPos = Vector2.zero;
+            zoomTarget  = 1f;
+            panTarget   = Vector2.zero;
+            panOffset   = Vector2.zero;
 
-            StopAllCoroutines();
-            StartCoroutine(FadeCanvasGroup(0f, 1f));
+            // Isi konten
+            if (titleText    != null) titleText.text    = doc.title;
+            if (contentText  != null) contentText.text  = doc.description;
 
-            // Step 5: Play local sound
-            if (localClickSound != null)
+            bool hasImage = doc.fullImage != null;
+            if (documentImage != null)
             {
-                localClickSound.Stop();
-                localClickSound.Play();
+                documentImage.gameObject.SetActive(hasImage);
+                if (hasImage) documentImage.sprite = doc.fullImage;
             }
+            if (contentText  != null) contentText.gameObject.SetActive(!hasImage || string.IsNullOrEmpty(doc.description) == false);
 
-            Debug.Log("[DocumentZoomViewer] Show called");
+            isOpen = true;
+            viewerRoot?.SetActive(true);
+
+            // Inventory tetap aktif di bawah; hanya layer ini yang ditampilkan
         }
 
-        private bool isClosing = false;
-        public void Hide()
+        public void Close()
         {
-            if (!isVisible || isClosing)
-                return;
-
-            isClosing = true;
-            isVisible = false;
-
-            StopAllCoroutines();
-
-            StartCoroutine(
-                FadeCanvasGroup(
-                    canvasGroup.alpha,
-                    0f,
-                    () =>
-                    {
-                        gameObject.SetActive(false);
-                        isClosing = false;
-
-                        Debug.Log("[DocumentZoomViewer] Hide completed");
-                    }
-                )
-            );
+            isOpen = false;
+            viewerRoot?.SetActive(false);
         }
 
-// Step 5: Reset zoom on double-click
-        public void OnPointerClick(PointerEventData eventData)
-        {
-            // Using Time.unscaledTime for double-click detection (more reliable)
-            float currentTime = Time.unscaledTime;
-            if (currentTime - lastClickTime < doubleClickThreshold)
-            {
-                // Double click detected - reset zoom
-                targetZoom = 1f;
-                documentImageRect.anchoredPosition = Vector2.zero;
-                
-                // Step 5: Play zoom sound
-                if (localZoomSound != null)
-                {
-                    localZoomSound.Stop();
-                    localZoomSound.Play();
-                }
-                
-                Debug.Log("[DocumentZoomViewer] Double-click - zoom reset");
-            }
-            lastClickTime = currentTime;
-        }
-
-        // =========================================
-        // POINTER EVENTS
-        // =========================================
+        // ══════════════════════════════════════════════════
+        //  ZOOM & PAN
+        // ══════════════════════════════════════════════════
 
         void HandleZoom()
         {
-            float scroll = Input.mouseScrollDelta.y;
-
-            if (Mathf.Abs(scroll) > 0.01f)
+            float scroll = Input.GetAxis("Mouse ScrollWheel");
+            if (Mathf.Abs(scroll) > 0.001f)
             {
-                targetZoom += scroll * zoomStep;
-                targetZoom = Mathf.Clamp(targetZoom, minZoom, maxZoom);
+                zoomTarget = Mathf.Clamp(zoomTarget + scroll * zoomSpeed * 10f, zoomMin, zoomMax);
 
-                if (localZoomSound != null)
-                {
-                    localZoomSound.Stop();
-                    localZoomSound.Play();
-                }
+                // Jika zoom kembali ke 1, snap pan ke pusat
+                if (zoomTarget <= zoomMin + 0.05f) panTarget = Vector2.zero;
             }
         }
 
-        public void OnPointerDown(PointerEventData eventData)
+        void HandlePan()
         {
-            // Hanya drag jika klik pada gambar dokumen, bukan overlay
-            if (eventData.pointerEnter == documentImage.gameObject)
+            if (Input.GetMouseButtonDown(0))
             {
-                isDragging = true;
-                lastPointerPosition = eventData.position;
+                isDragging   = true;
+                lastMousePos = Input.mousePosition;
+            }
+
+            if (Input.GetMouseButtonUp(0))
+                isDragging = false;
+
+            if (isDragging)
+            {
+                Vector2 delta = (Vector2)Input.mousePosition - lastMousePos;
+                lastMousePos  = Input.mousePosition;
+                panTarget    += delta / documentPanel.lossyScale.x;
             }
         }
 
-        public void OnPointerUp(PointerEventData eventData)
+        void ApplyTransform()
         {
-            isDragging = false;
-        }
+            if (documentPanel == null) return;
 
-        public void OnDrag(PointerEventData eventData)
-        {
-            if (!isDragging) return;
+            // Smooth zoom
+            float currentZoom = documentPanel.localScale.x;
+            float newZoom     = Mathf.Lerp(currentZoom, zoomTarget, animSpeed * Time.unscaledDeltaTime);
+            documentPanel.localScale = new Vector3(newZoom, newZoom, 1f);
 
-            Vector2 delta = eventData.position - lastPointerPosition;
-            lastPointerPosition = eventData.position;
+            // Smooth pan — batasi pan agar dokumen tidak keluar layar
+            float halfW   = documentPanel.rect.width  * newZoom * 0.5f;
+            float halfH   = documentPanel.rect.height * newZoom * 0.5f;
+            float maxPanX = Mathf.Max(0f, halfW  - Screen.width  * 0.5f);
+            float maxPanY = Mathf.Max(0f, halfH  - Screen.height * 0.5f);
 
-            documentImageRect.anchoredPosition += delta;
-        }
+            panTarget.x  = Mathf.Clamp(panTarget.x,  -maxPanX, maxPanX);
+            panTarget.y  = Mathf.Clamp(panTarget.y,  -maxPanY, maxPanY);
 
-        // =========================================
-        // HELPER
-        // =========================================
+            panOffset = Vector2.Lerp(panOffset, panTarget, animSpeed * Time.unscaledDeltaTime);
+            documentPanel.anchoredPosition = panOffset;
 
-        private void ClampImagePosition()
-        {
-            if (documentImageRect == null) return;
-
-            // Batas geser berdasarkan zoom (semakin zoom in, semakin bebas geser)
-            float halfW = documentImageRect.rect.width * currentZoom * 0.5f;
-            float halfH = documentImageRect.rect.height * currentZoom * 0.5f;
-
-            float clampX = Mathf.Max(0, halfW - Screen.width * 0.5f);
-            float clampY = Mathf.Max(0, halfH - Screen.height * 0.5f);
-
-            Vector2 pos = documentImageRect.anchoredPosition;
-            pos.x = Mathf.Clamp(pos.x, -clampX, clampX);
-            pos.y = Mathf.Clamp(pos.y, -clampY, clampY);
-            documentImageRect.anchoredPosition = pos;
-        }
-
-        private IEnumerator FadeCanvasGroup(float from, float to, System.Action onComplete = null)
-        {
-            canvasGroup.alpha = from;
-            float t = 0f;
-
-            while (t < 1f)
-            {
-                t += Time.unscaledDeltaTime * fadeSpeed;
-                canvasGroup.alpha = Mathf.Lerp(from, to, t);
-                yield return null;
-            }
-
-            canvasGroup.alpha = to;
-            onComplete?.Invoke();
-        }
-
-        // Tambah reset zoom dengan double click
-        private float lastClickTime = 0f;
-        private const float doubleClickThreshold = 0.3f;
-
-        public void OnDoubleClickReset()
-        {
-            if (Time.unscaledTime - lastClickTime < doubleClickThreshold)
-            {
-                targetZoom = 1f;
-                documentImageRect.anchoredPosition = Vector2.zero;
-            }
-            lastClickTime = Time.unscaledTime;
+            // Alpha fade in
+            if (canvasGroup != null && canvasGroup.alpha < 1f)
+                canvasGroup.alpha = Mathf.MoveTowards(canvasGroup.alpha, 1f, animSpeed * Time.unscaledDeltaTime);
         }
     }
 }

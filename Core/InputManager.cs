@@ -49,11 +49,14 @@ namespace KKN.Game.Core
 
         // ─- Actions ───────────────────────────────────────
         public bool GetInteractDown()    => Input.GetKeyDown(interactKey);
+        public bool GetInteractHeld()    => Input.GetKey(interactKey);
+
         public bool GetFlashlightDown()  => Input.GetKeyDown(flashlightKey);
         public bool GetReloadDown()      => Input.GetKeyDown(reloadKey);
         public bool GetCrouchDown()      => Input.GetKeyDown(crouchKey);
         public bool GetTabDown()         => Input.GetKeyDown(tabKey);
         public bool GetEscapeDown()      => Input.GetKeyDown(escapeKey);
+
         public bool GetRunHeld()         => Input.GetKey(runKey);
         public bool GetMouseLeftDown()   => Input.GetMouseButtonDown(0);
 

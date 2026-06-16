@@ -1,5 +1,6 @@
 using UnityEngine;
 using KKN.Game.Core;
+using KKN.Game.Systems;
 
 namespace KKN.Game.Player
 {
@@ -49,6 +50,13 @@ namespace KKN.Game.Player
         [Header("Landing")]
         [SerializeField] private float landingImpact = 0.12f;
         [SerializeField] private float landingRecoverSpeed = 6f;
+
+        [Header("Audio Clips")]
+        [SerializeField] private AudioClip[] footstepWalk;   // 4-6 varian walk
+        [SerializeField] private AudioClip[] footstepRun;    // 4-6 varian run
+        [SerializeField] private AudioClip   jumpClip;
+        [SerializeField] private AudioClip   breathClip;
+        [SerializeField] private AudioClip   heartbeatClip;
 
         private CharacterController controller;
 
@@ -183,6 +191,9 @@ namespace KKN.Game.Player
                     Mathf.Sqrt(jumpHeight * -2f * gravity);
 
                 jumpTimer = jumpCooldown;
+
+                // Hook audio lompat — sebelumnya OnJump() tidak pernah terpanggil
+                OnJump();
             }
         }
 
@@ -412,6 +423,29 @@ namespace KKN.Game.Player
                 0,
                 landingRecoverSpeed * Time.deltaTime
             );
+        }
+
+        // Footstep — panggil dari Animation Event atau timer
+        void PlayFootstep(bool isRunning)
+        {
+            AudioClip[] pool = isRunning ? footstepRun : footstepWalk;
+            AudioManager.Instance.PlaySFXRandom(pool, transform.position, volume: 0.8f);
+        }
+
+        // Jump
+        void OnJump()
+        {
+            AudioManager.Instance.PlaySFX(jumpClip, transform.position, 0.7f);
+        }
+
+        // Heartbeat saat health rendah — looping dari SanitySystem atau HealthSystem
+        void StartHeartbeat()
+        {
+            AudioManager.Instance.PlaySanityAudio(heartbeatClip, 0.5f);
+        }
+        void StopHeartbeat()
+        {
+            AudioManager.Instance.StopSanityAudio(fadeDuration: 0.5f);
         }
 
         public float GetStaminaPercent()

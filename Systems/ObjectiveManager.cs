@@ -1,145 +1,127 @@
 using UnityEngine;
-using TMPro;
-using System.Collections;
-using KKN.Game.Data;
-using KKN.Game.Core;
+using System;
 
 namespace KKN.Game.Systems
 {
     /// <summary>
-    /// Manages objective progression with support for varied objective types.
+    /// Mengelola objective text yang ditampilkan ke player.
+    /// Dipanggil oleh interactable objects dan puzzle scripts.
     /// </summary>
     public class ObjectiveManager : MonoBehaviour
     {
         public static ObjectiveManager Instance { get; private set; }
 
-        [Header("Popup UI")]
-        [SerializeField] private TMP_Text objectiveText;
+        // Event agar UI bisa subscribe
+        public event Action<string> OnObjectiveChanged;
 
-        [Header("Objectives")]
-        [SerializeField] private ObjectiveData[] objectives;
+        [Header("Current Objective")]
+        [SerializeField] private string currentObjective = "";
 
-        public int currentStep { get; private set; } = 0;
+        [Header("Objective Steps (opsional, untuk linear progression)")]
+        [SerializeField] private string[] objectiveSteps;
+        private int stepIndex = 0;
 
-        private string currentObjective = "";
-        private Coroutine hideRoutine;
-        private bool isGlitching = false;
-
-        public event System.Action<int> OnObjectiveChanged;
+        // Kompatibilitas SaveSystem — expose step index
+        public int currentStep => stepIndex;
 
         void Awake()
         {
-            if (Instance != null)
-            {
-                Destroy(gameObject);
-                return;
-            }
+            if (Instance != null) { Destroy(gameObject); return; }
             Instance = this;
+            DontDestroyOnLoad(gameObject);
         }
 
         void Start()
         {
-            SetObjective();
-            ShowTemporary();
+            if (objectiveSteps != null && objectiveSteps.Length > 0)
+                SetObjective(objectiveSteps[0]);
+        }
+
+        public void SetObjective(string text)
+        {
+            currentObjective = text;
+            OnObjectiveChanged?.Invoke(text);
+            Debug.Log($"[ObjectiveManager] Objective: {text}");
         }
 
         public void NextStep()
         {
-            currentStep++;
-            SetObjective();
-            ShowTemporary();
-            OnObjectiveChanged?.Invoke(currentStep);
-        }
-
-        void SetObjective()
-        {
-            if (objectives != null && currentStep < objectives.Length)
+            Debug.Log(
+                $"NextStep | stepIndex={stepIndex} | length={(objectiveSteps == null ? 0 : objectiveSteps.Length)}"
+            );
+            
+            if (objectiveSteps == null || objectiveSteps.Length == 0)
             {
-                currentObjective = objectives[currentStep].description;
-            }
-            else
-            {
-                currentObjective = GetLegacyObjective();
+                Debug.LogWarning("[ObjectiveManager] Objective Steps kosong.");
+                return;
             }
 
-            if (objectiveText != null)
-                objectiveText.text = currentObjective;
+            stepIndex = Mathf.Clamp(
+                stepIndex + 1,
+                0,
+                objectiveSteps.Length - 1
+            );
+
+            SetObjective(objectiveSteps[stepIndex]);
         }
 
-        string GetLegacyObjective()
-        {
-            return currentStep switch
-            {
-                0 => "Cari jalan keluar kamar...",
-                1 => "Temukan IntroKey",
-                2 => "Buka pintu kamar",
-                3 => "Cari MainKey",
-                4 => "Cari ExitKey",
-                5 => "Keluar dari kontrakan",
-                6 => "Cari GeneratorKey",
-                7 => "Nyalakan Generator",
-                8 => "Listrik Menyala...",
-                _ => ""
-            };
-        }
-
-        public void GlitchObjectiveText()
-        {
-            if (isGlitching || objectiveText == null) return;
-            StartCoroutine(GlitchRoutine());
-        }
-
-        IEnumerator GlitchRoutine()
-        {
-            isGlitching = true;
-            string original = objectiveText.text;
-            string chars = "!@#$%^&*()_+-=[]{}|;':,./<>?~`";
-
-            for (int i = 0; i < 8; i++)
-            {
-                string glitched = "";
-                for (int j = 0; j < original.Length; j++)
-                {
-                    glitched += Random.value < 0.3f ? chars[Random.Range(0, chars.Length)] : original[j];
-                }
-                objectiveText.text = glitched;
-                yield return new WaitForSeconds(Random.Range(0.05f, 0.15f));
-            }
-
-            objectiveText.text = original;
-            isGlitching = false;
-        }
-
-        void ShowTemporary()
-        {
-            if (objectiveText == null) return;
-
-            objectiveText.gameObject.SetActive(true);
-
-            if (hideRoutine != null)
-                StopCoroutine(hideRoutine);
-
-            hideRoutine = StartCoroutine(HideAfterSeconds());
-        }
-
-        IEnumerator HideAfterSeconds()
-        {
-            yield return new WaitForSeconds(GameConstants.OBJECTIVE_SHOW_TIME);
-
-            float t = 0f;
-            while (t < 1f)
-            {
-                t += Time.deltaTime * GameConstants.UI_FADE_SPEED;
-                if (objectiveText != null)
-                    objectiveText.alpha = Mathf.Lerp(1f, 0f, t);
-                yield return null;
-            }
-
-            if (objectiveText != null)
-                objectiveText.gameObject.SetActive(false);
-        }
+        public void ClearObjective() => SetObjective("");
 
         public string GetCurrentObjective() => currentObjective;
+
+        // ── Kompatibilitas SaveSystem ──────────────────────
+        /// <summary>
+        /// Restore step index saat load save game.
+        /// Dipanggil oleh SaveSystem.
+        /// </summary>
+        public void LoadStep(int step)
+        {
+            if (objectiveSteps == null || objectiveSteps.Length == 0) return;
+            stepIndex = Mathf.Clamp(step, 0, objectiveSteps.Length - 1);
+            SetObjective(objectiveSteps[stepIndex]);
+        }
+
+        // ── Kompatibilitas SanitySystem ────────────────────
+        /// <summary>
+        /// Efek sanity rendah: objective text berkedip/terdistorsi sementara.
+        /// Dipanggil oleh SanitySystem saat sanity sangat rendah.
+        /// </summary>
+        public void GlitchObjectiveText(float duration = 2f)
+        {
+            if (gameObject.activeInHierarchy)
+                StartCoroutine(GlitchRoutine(duration));
+        }
+
+        private System.Collections.IEnumerator GlitchRoutine(float duration)
+        {
+            string original = currentObjective;
+            string[] glitchVariants =
+            {
+                "̷̢͔̈́͠?̷̘͑?̸͚̾?̴͖̚?̵͙̑?",
+                "ERROR // TIDAK BISA DIBACA",
+                ".. . . ??. . .",
+                original.Length > 0 ? Scramble(original) : "???"
+            };
+
+            float elapsed = 0f;
+            while (elapsed < duration)
+            {
+                string glitch = glitchVariants[UnityEngine.Random.Range(0, glitchVariants.Length)];
+                OnObjectiveChanged?.Invoke(glitch);
+                yield return new WaitForSecondsRealtime(UnityEngine.Random.Range(0.08f, 0.2f));
+                elapsed += 0.15f;
+            }
+
+            // Kembalikan teks asli
+            OnObjectiveChanged?.Invoke(original);
+        }
+
+        private string Scramble(string input)
+        {
+            var chars = input.ToCharArray();
+            for (int i = 0; i < chars.Length; i++)
+                if (UnityEngine.Random.value > 0.5f) chars[i] = (char)UnityEngine.Random.Range(63, 90);
+            return new string(chars);
+        }
     }
 }
-

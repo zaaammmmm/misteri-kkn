@@ -103,13 +103,14 @@ namespace KKN.Game.UI
 
         public void ResumeGame()
         {
+            Debug.Log("BUTTON CLICKED");
             GameManager.Instance?.ResumeGame();
             pausePanel?.SetActive(false);
             settingsPanel?.SetActive(false);
             // GameManager.SetState(Playing) sudah handle LockCursor + timeScale = 1.
             // Eksplisit di sini sebagai fallback jika GameManager null.
             Cursor.visible   = false;
-            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.lockState = CursorLockMode.None;
             Time.timeScale   = 1f;
         }
 

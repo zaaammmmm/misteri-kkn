@@ -21,7 +21,7 @@ namespace KKN.Game.UI
     [RequireComponent(typeof(Button))]
     public partial class DocumentSlotUI : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     {
-[Header("Referensi Visual")]
+        [Header("Referensi Visual")]
         [SerializeField] private Image iconImage;
         [SerializeField] private GameObject hoverGlow;
         [SerializeField] private TMP_Text titleLabel;
@@ -50,13 +50,18 @@ namespace KKN.Game.UI
 
 void Awake()
         {
-            // FIX: Add null check to prevent NullReferenceException
-            btn = GetComponent<Button>();
             if (btn == null)
             {
-                // Try to add Button component if missing
-                btn = gameObject.AddComponent<Button>();
-                Debug.LogWarning("[DocumentSlotUI] Button component was missing, added automatically.");
+                btn = GetComponent<Button>();
+
+                if (btn == null)
+                    btn = GetComponentInChildren<Button>();
+            }
+
+            if (btn == null)
+            {
+                Debug.LogError($"[{name}] Button tidak ditemukan.");
+                return;
             }
             
             backgroundImage = GetComponent<Image>();
@@ -113,12 +118,21 @@ void Awake()
             // Step 8: Show NEW badge if document hasn't been read (with null check)
             if (newBadge != null)
                 newBadge.SetActive(!doc.isPicked);
-
-            // FIX: Add null check for btn to prevent NullReferenceException
+                
             if (btn == null)
             {
-                Debug.LogError("[DocumentSlotUI] Button component is null! Please ensure slot prefab has a Button component.");
-                return;
+                btn = GetComponent<Button>();
+
+                if (btn == null)
+                    btn = GetComponentInChildren<Button>();
+
+                if (btn == null)
+                {
+                    btn = gameObject.AddComponent<Button>();
+
+                    Debug.LogWarning(
+                        $"[{name}] Button tidak ditemukan, dibuat otomatis.");
+                }
             }
 
             btn.onClick.RemoveAllListeners();

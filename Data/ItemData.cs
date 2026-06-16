@@ -3,33 +3,37 @@ using UnityEngine;
 namespace KKN.Game.Data
 {
     /// <summary>
-    /// ScriptableObject defining an item in the game world.
-    /// Used by InventorySystem and pickup objects.
+    /// ScriptableObject mendefinisikan item di dunia game.
+    /// Digunakan oleh InventorySystem dan semua pickup objects.
+    ///
+    /// itemType WAJIB diisi dengan tepat (case-insensitive):
+    ///   "Key"      — kunci pintu / area
+    ///   "Material" — bahan generator (Gas, Oli, Kabel, Gear, dst)
+    ///   "Other"    — item lain-lain
     /// </summary>
     [CreateAssetMenu(fileName = "ItemData", menuName = "KKN/Item Data")]
     public class ItemData : ScriptableObject
     {
-        [Tooltip("Unique identifier for this item")]
+        [Tooltip("ID unik item, harus sama persis dengan yang dipakai di ItemPickup.itemID")]
         public string itemID;
 
-        [Tooltip("Display name shown to the player")]
+        [Tooltip("Nama tampilan di UI inventory")]
         public string displayName;
 
-        [Tooltip("Description shown in journal/inventory")]
+        [Tooltip("Deskripsi singkat di panel detail inventory")]
         [TextArea(2, 4)]
         public string description;
 
-        [Tooltip("Icon sprite for UI")]
+        [Tooltip("Ikon sprite untuk slot inventory")]
         public Sprite icon;
 
-        [Tooltip("Can this item be consumed/used?")]
+        [Tooltip("Bisa dikonsumsi/dipakai?")]
         public bool isConsumable;
 
-        [Tooltip("Maximum stack size (1 for keys, higher for consumables)")]
+        [Tooltip("Ukuran stack maksimum (1 untuk kunci)")]
         public int maxStack = 1;
 
-        [Tooltip("Kategori item untuk tab inventori. Isi: Key / Material / Other")]
+        [Tooltip("Kategori tab inventory: Key / Material / Other")]
         public string itemType = "Other";
     }
 }
-

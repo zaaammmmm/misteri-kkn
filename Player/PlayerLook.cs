@@ -54,15 +54,12 @@ namespace KKN.Game.Player
 
         void Update()
         {
-            // if (InputManager.Instance != null && InputManager.Instance.GetEscapeDown())
-            //     InputManager.Instance.UnlockCursor();
 
-            // if (InputManager.Instance != null && InputManager.Instance.GetMouseLeftDown())
-            //     InputManager.Instance.LockCursor();
-
+            // 🚨 STOP kalau cursor tidak di-lock (UI aktif)
             if (Cursor.lockState != CursorLockMode.Locked)
                 return;
 
+            // 🚨 STOP kalau player di-freeze (pause / inventory)
             if (PlayerState.Instance != null && PlayerState.Instance.IsFrozen)
                 return;
 
@@ -70,7 +67,6 @@ namespace KKN.Game.Player
                 ? InputManager.Instance.GetLookInput()
                 : new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
 
-            // Fallback to direct Input if InputManager returns zero
             if (Mathf.Approximately(lookInput.x, 0f))
                 lookInput.x = Input.GetAxis("Mouse X");
             if (Mathf.Approximately(lookInput.y, 0f))
@@ -79,31 +75,23 @@ namespace KKN.Game.Player
             float mouseX = lookInput.x * sensitivity * Time.deltaTime;
             float mouseY = lookInput.y * sensitivity * Time.deltaTime;
 
-            // Accumulate rotations
             xRotation -= mouseY;
             xRotation = Mathf.Clamp(xRotation, minVerticalAngle, maxVerticalAngle);
 
             yRotation += mouseX;
 
-            // Apply rotations
             if (smoothLook)
-            {
                 currentXRotation = Mathf.Lerp(currentXRotation, xRotation, Time.deltaTime * smoothSpeed);
-            }
             else
-            {
                 currentXRotation = xRotation;
-            }
 
             if (playerBody != null)
             {
-                // Standard FPS: rotate camera pitch, rotate body yaw
                 transform.localRotation = Quaternion.Euler(currentXRotation, 0f, 0f);
                 playerBody.rotation = Quaternion.Euler(0f, yRotation, 0f);
             }
             else
             {
-                // Standalone camera: rotate both pitch and yaw on same transform
                 transform.rotation = Quaternion.Euler(currentXRotation, yRotation, 0f);
             }
         }

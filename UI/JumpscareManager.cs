@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using System.Collections;
 using KKN.Game.Core;
 using KKN.Game.Player;
+using KKN.Game.Systems;
 
 namespace KKN.Game.UI
 {
@@ -20,7 +21,10 @@ namespace KKN.Game.UI
         [SerializeField] private GameObject gameOverPanel;
 
         [Header("Audio")]
-        [SerializeField] private AudioSource screamAudio;
+        [Tooltip("Pool stinger jumpscare (60+ varian) — dipilih random tiap trigger, dimainkan 3D di posisi ghost")]
+        [SerializeField] private AudioClip[] jumpscareStingers;
+
+        [Tooltip("Scream/sting saat sanity habis — 2D karena ini event psikologis, bukan kejadian dunia nyata")]
         [SerializeField] private AudioClip sanityDeathClip;
 
         void Awake()
@@ -45,8 +49,9 @@ namespace KKN.Game.UI
 
             Camera cam = Camera.main;
 
-            if (screamAudio != null)
-                screamAudio.Play();
+            // Stinger random, 3D di posisi ghost dengan sedikit variasi pitch
+            Vector3 stingerPos = ghost != null ? ghost.position : transform.position;
+            AudioManager.Instance?.PlaySFXRandom(jumpscareStingers, stingerPos, 1f, 0.95f, 1.05f);
 
             float t = 0f;
             while (t < 1.2f)
@@ -83,10 +88,9 @@ namespace KKN.Game.UI
             PlayerFreeze(true);
             GameManager.Instance?.GameOver();
 
-            if (sanityDeathClip != null && screamAudio != null)
-                screamAudio.PlayOneShot(sanityDeathClip);
-            else if (screamAudio != null)
-                screamAudio.Play();
+            // Hentikan drone sanity yang sedang loop, lalu mainkan scream kematian sanity (2D)
+            AudioManager.Instance?.StopSanityAudio(fadeDuration: 0.3f);
+            AudioManager.Instance?.PlaySFX2D(sanityDeathClip, volume: 1f);
 
             SetAlpha(bloodFlash, 0.5f);
             yield return new WaitForSeconds(0.3f);
@@ -138,4 +142,3 @@ namespace KKN.Game.UI
         }
     }
 }
-

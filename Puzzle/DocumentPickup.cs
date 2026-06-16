@@ -5,19 +5,27 @@ using KKN.Game.Inventory;
 namespace KKN.Game.Puzzle
 {
     /// <summary>
-    /// Letakkan script ini pada GameObject dokumen di scene.
-    /// Pastikan ada Collider (IsTrigger tidak perlu) untuk interaksi.
+    /// Pickup untuk dokumen. Setelah diambil, dokumen masuk ke tab Dokumen di inventory.
     /// </summary>
     public class DocumentPickup : MonoBehaviour, Core.IInteractable
     {
         [Header("Document Data")]
         [SerializeField] private DocumentData documentData;
 
-        [Header("UI")]
+        [Header("Interact Text")]
         [SerializeField] private string pickupText = "[E] Ambil Dokumen";
 
+        [Header("Objective Text")]
+        [Tooltip("Objective sebelum dokumen diambil")]
+        [TextArea(2, 3)]
+        [SerializeField] private string objectiveTextBefore = "";
+
+        [Tooltip("Objective setelah dokumen diambil")]
+        [TextArea(2, 3)]
+        [SerializeField] private string objectiveTextAfter  = "";
+
         [Header("Optional")]
-        [SerializeField] private bool destroyAfterPickup = true;
+        [SerializeField] private bool  destroyAfterPickup = true;
         [SerializeField] private GameObject pickupEffect;
         [SerializeField] private AudioSource pickupSound;
 
@@ -35,12 +43,11 @@ namespace KKN.Game.Puzzle
 
             hasBeenPickedUp = true;
 
-            // Tambah ke inventory
-            InventorySystem.Instance.AddDocument(documentData);
+            InventorySystem.Instance?.AddDocument(documentData);
 
-            Debug.Log($"[DocumentPickup] Diambil: {documentData.title}");
+            if (!string.IsNullOrEmpty(objectiveTextAfter))
+                ObjectiveManager.Instance?.SetObjective(objectiveTextAfter);
 
-            // Efek pickup
             if (pickupEffect != null)
                 Instantiate(pickupEffect, transform.position, Quaternion.identity);
 
@@ -48,13 +55,13 @@ namespace KKN.Game.Puzzle
             {
                 pickupSound.transform.SetParent(null);
                 pickupSound.Play();
-                Destroy(pickupSound.gameObject, pickupSound.clip != null ? pickupSound.clip.length + 0.1f : 1f);
+                Destroy(pickupSound.gameObject,
+                    pickupSound.clip != null ? pickupSound.clip.length + 0.1f : 1f);
             }
 
             if (destroyAfterPickup)
                 Destroy(gameObject);
             else
-                // Nonaktifkan interaksi tapi objek tetap ada di scene
                 gameObject.layer = LayerMask.NameToLayer("Default");
         }
 
@@ -63,7 +70,12 @@ namespace KKN.Game.Puzzle
             return hasBeenPickedUp ? "" : pickupText;
         }
 
-        public void OnHoverEnter() { }
+        public void OnHoverEnter()
+        {
+            if (!hasBeenPickedUp && !string.IsNullOrEmpty(objectiveTextBefore))
+                ObjectiveManager.Instance?.SetObjective(objectiveTextBefore);
+        }
+
         public void OnHoverExit() { }
     }
 }

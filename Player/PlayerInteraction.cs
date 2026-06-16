@@ -18,6 +18,8 @@ namespace KKN.Game.Player
 
         private Camera cam;
         private IInteractable currentTarget;
+        private IHoldInteractable currentHoldTarget;
+        private float holdTimer;
 
         void Start()
         {
@@ -62,10 +64,7 @@ namespace KKN.Game.Player
 
                     SetHint(interactable.GetInteractText());
 
-                    if (InputManager.Instance != null && InputManager.Instance.GetInteractDown())
-                        interactable.Interact();
-                    else if (Input.GetKeyDown(GameConstants.KEY_INTERACT))
-                        interactable.Interact();
+                    HandleInteraction(interactable);
 
                     return;
                 }
@@ -94,6 +93,81 @@ namespace KKN.Game.Player
                 hintText.text = string.Empty;
             else if (UI.PlayerHUD.Instance != null)
                 UI.PlayerHUD.Instance.HidePrompt();
+        }
+
+        private void HandleInteraction(IInteractable interactable)
+        {
+            if (interactable is IHoldInteractable holdable)
+            {
+                HandleHoldInteraction(interactable, holdable);
+                return;
+            }
+
+            if (InputManager.Instance != null && InputManager.Instance.GetInteractDown())
+                interactable.Interact();
+            else if (Input.GetKeyDown(GameConstants.KEY_INTERACT))
+                interactable.Interact();
+        }
+
+        private void HandleHoldInteraction(
+            IInteractable interactable,
+            IHoldInteractable holdable)
+        {
+            if (!holdable.CanStartHold())
+            {
+                if (currentHoldTarget == holdable)
+                {
+                    holdable.OnHoldCancel();
+                    currentHoldTarget = null;
+                    holdTimer = 0f;
+                }
+
+                return;
+            }
+            bool holding =
+                (InputManager.Instance != null &&
+                InputManager.Instance.GetInteractHeld())
+                || Input.GetKey(GameConstants.KEY_INTERACT);
+
+            if (holding)
+            {
+                if (currentHoldTarget != holdable)
+                {
+                    currentHoldTarget = holdable;
+                    holdTimer = 0f;
+
+                    holdable.OnHoldStart();
+                }
+
+                holdTimer += Time.deltaTime;
+
+                float progress =
+                    Mathf.Clamp01(holdTimer / holdable.GetHoldDuration());
+
+                SetHint(
+                    $"{interactable.GetInteractText()}\n" +
+                    $"Menyalakan Generator... {(int)(progress * 100)}%"
+                );
+
+                if (holdTimer >= holdable.GetHoldDuration())
+                {
+                    holdable.OnHoldComplete();
+                    interactable.Interact();
+
+                    // kunci di nilai maksimum
+                    holdTimer = holdable.GetHoldDuration();
+                }
+            }
+            else
+            {
+                if (currentHoldTarget == holdable)
+                {
+                    holdable.OnHoldCancel();
+
+                    currentHoldTarget = null;
+                    holdTimer = 0f;
+                }
+            }
         }
     }
 }
