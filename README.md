@@ -11,7 +11,7 @@
 
 ## 📖 Tentang Game
 
-**Misteri KKN: Desa Terkutuk** adalah game horror realistis bergaya first-person yang terinspirasi dari mitos dan budaya pedesaan Indonesia. Pemain berperan sebagai mahasiswa KKN yang terjebak di sebuah desa terkutuk, menghadapi entitas supranatural yang memiliki kecerdasan dan perilaku adaptif.
+**Misteri KKN: Desa Terkutuk** adalah game horror realistis bergaya first-person yang terinspirasi dari mitos dan budaya pedesaan Indonesia. Pemain bernama Azaam berperan sebagai mahasiswa KKN yang terjebak di sebuah desa terkutuk, menghadapi entitas supranatural yang memiliki kecerdasan dan perilaku adaptif.
 
 Game ini mengedepankan:
 - **Atmosfer horror yang autentik** — setting desa Indonesia dengan elemen budaya lokal
