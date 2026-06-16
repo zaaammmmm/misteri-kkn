@@ -25,10 +25,10 @@ Game ini mengedepankan:
 
 | Scene | Keterangan |
 |-------|-----------|
+| `Intro` | Cutscene pembuka |
 | `MainMenu` | Layar utama, pemilihan chapter |
-| `Intro` | Cutscene pembuka, pengenalan cerita |
-| `Chapter1` | Gameplay utama — Desa Terkutuk |
-| `Gameplay` | Scene runtime / session aktif |
+| `Chapter1` | Pengenalan Cerita - Dialog |
+| `Gameplay` | Gameplay utama — Scene runtime / session aktif |
 | `Ending` | Resolusi cerita berdasarkan pilihan pemain |
 
 Scene dikelola oleh `KKN_SceneManager` (singleton `DontDestroyOnLoad`) dan diinisialisasi melalui `KKN_Bootstrap`.
